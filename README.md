@@ -12,6 +12,9 @@ it as a GitHub prerelease.
 - A tag that already has a release is skipped, so scheduled runs are safe
   to repeat.
 - The unsigned installer is uploaded to the GitHub Release for that revision.
+- The workflow applies a temporary compatibility patch for an upstream stale
+  `fs-ext` smoke check; the upstream runtime has already migrated away from
+  that dependency.
 
 ## First run
 
