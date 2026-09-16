@@ -12,6 +12,9 @@ it as a GitHub prerelease.
 - A tag that already has a release is skipped, so scheduled runs are safe
   to repeat.
 - The unsigned installer is uploaded to the GitHub Release for that revision.
+- The same updater files are mirrored to GitHub Pages under
+  `_/harness/desktop/stable/win-x64/` for the experimental in-app update
+  channel.
 - The workflow applies a temporary compatibility patch for an upstream stale
   `fs-ext` smoke check; the upstream runtime has already migrated away from
   that dependency.
@@ -24,7 +27,7 @@ The workflow needs no repository secrets. GitHub's automatically provided
 
 ## Important limitations
 
-Builds are unsigned. Windows SmartScreen may show a warning, and this workflow
-does not configure electron-updater in the upstream application. A signed
-production channel requires a code-signing certificate and a separately
-configured update origin.
+Builds are unsigned. Windows SmartScreen may show a warning, and the
+GitHub-Pages updater channel is experimental because electron-updater may reject
+unsigned packages. A signed production channel requires a code-signing
+certificate.

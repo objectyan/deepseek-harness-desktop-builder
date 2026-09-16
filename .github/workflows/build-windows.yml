@@ -17,6 +17,8 @@ jobs:
     runs-on: windows-latest
     env:
       DSH_DESKTOP_APP_ID: com.objectyan.deepseek-harness
+      DSH_DESKTOP_AUTO_UPDATE_ENV: test
+      DOWNLOAD_TEST_ORIGIN: https://objectyan.github.io/deepseek-harness-desktop-builder
     steps:
       - name: Checkout upstream
         uses: actions/checkout@v4
@@ -49,6 +51,16 @@ jobs:
           }
           $text = [regex]::Replace($text, '(?m)^\s*checkFsExt\(\)\r?\n', '')
           $text = $text.Replace('    fsExt: true, koffi: true, sharp: true, html: true, pty: true', '    koffi: true, sharp: true, html: true, pty: true')
+          Set-Content -Path $path -Value $text -NoNewline
+
+      - name: Enable experimental updater metadata for unsigned build
+        shell: pwsh
+        run: |
+          $path = 'apps/desktop/electron-builder.config.mjs'
+          $text = Get-Content -Raw $path
+          $old = 'const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)'
+          if (-not $text.Contains($old)) { throw "Expected updater config line was not found in $path" }
+          $text = $text.Replace($old, 'const update = resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)')
           Set-Content -Path $path -Value $text -NoNewline
 
       - name: Check whether this revision is already released
@@ -94,6 +106,23 @@ jobs:
       - name: Build unsigned Windows x64 installer
         if: steps.release.outputs.exists != 'true'
         run: pnpm run package:desktop:win:x64:unsigned
+
+      - name: Assemble GitHub Pages updater tree
+        if: steps.release.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          $site = 'update-site/_/harness/desktop/stable/win-x64'
+          New-Item -ItemType Directory -Force -Path $site | Out-Null
+          Copy-Item 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*' $site -Force
+
+      - name: Publish updater tree to GitHub Pages
+        if: steps.release.outputs.exists != 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: update-site
+          force_orphan: false
 
       - name: Create release
         if: steps.release.outputs.exists != 'true'
