@@ -23,17 +23,20 @@ jobs:
         with:
           repository: deepseek-ai/deepseek-harness
           ref: master
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Read upstream revision and version
+      - name: Resolve latest upstream tag
         id: meta
         shell: pwsh
         run: |
+          $tag = (git tag --list 'dsh-v*' --sort=-version:refname | Select-Object -First 1).Trim()
+          if (-not $tag) { throw 'No upstream dsh-v* tag was found.' }
+          git checkout --detach $tag
           $sha = (git rev-parse HEAD).Trim()
           $package = Get-Content -Raw package.json | ConvertFrom-Json
           $version = $package.version
+          "tag=$tag" >> $env:GITHUB_OUTPUT
           "sha=$sha" >> $env:GITHUB_OUTPUT
-          "short_sha=$($sha.Substring(0, 12))" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Check whether this revision is already released
@@ -41,7 +44,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const tag = `upstream-${'${{ steps.meta.outputs.short_sha }}'}`;
+            const tag = `upstream-${'${{ steps.meta.outputs.tag }}'}`;
             try {
               await github.rest.repos.getReleaseByTag({
                 owner: context.repo.owner,
@@ -84,8 +87,8 @@ jobs:
         if: steps.release.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: upstream-${{ steps.meta.outputs.short_sha }}
-          name: DeepSeek Harness ${{ steps.meta.outputs.version }} (upstream ${{ steps.meta.outputs.short_sha }})
+          tag_name: upstream-${{ steps.meta.outputs.tag }}
+          name: DeepSeek Harness ${{ steps.meta.outputs.version }} (${{ steps.meta.outputs.tag }})
           prerelease: true
           generate_release_notes: true
           body: |
