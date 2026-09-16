@@ -1,0 +1,97 @@
+name: Build DeepSeek Harness Desktop (Windows)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-build-windows
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      DSH_DESKTOP_APP_ID: com.objectyan.deepseek-harness
+    steps:
+      - name: Checkout upstream
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: master
+          fetch-depth: 1
+
+      - name: Read upstream revision and version
+        id: meta
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          $package = Get-Content -Raw package.json | ConvertFrom-Json
+          $version = $package.version
+          "sha=$sha" >> $env:GITHUB_OUTPUT
+          "short_sha=$($sha.Substring(0, 12))" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check whether this revision is already released
+        id: release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = `upstream-${'${{ steps.meta.outputs.short_sha }}'}`;
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+              core.setOutput('exists', 'true');
+            } catch (error) {
+              if (error.status === 404) core.setOutput('exists', 'false');
+              else throw error;
+            }
+
+      - name: Stop when the current upstream revision is already published
+        if: steps.release.outputs.exists == 'true'
+        shell: pwsh
+        run: Write-Host "Release for ${{ steps.meta.outputs.sha }} already exists."
+
+      - name: Setup Node.js
+        if: steps.release.outputs.exists != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Enable pnpm
+        if: steps.release.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install dependencies
+        if: steps.release.outputs.exists != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned Windows x64 installer
+        if: steps.release.outputs.exists != 'true'
+        run: pnpm run package:desktop:win:x64:unsigned
+
+      - name: Create release
+        if: steps.release.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: upstream-${{ steps.meta.outputs.short_sha }}
+          name: DeepSeek Harness ${{ steps.meta.outputs.version }} (upstream ${{ steps.meta.outputs.short_sha }})
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            Automated unsigned Windows x64 build from deepseek-ai/deepseek-harness.
+
+            Upstream commit: ${{ steps.meta.outputs.sha }}
+            Upstream version: ${{ steps.meta.outputs.version }}
+          files: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/**
